@@ -1,315 +1,466 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Core;
 using Core.Middleware;
-using Core.States;
 using Model;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
-namespace ExampleBot
+namespace SimpleTelegramBot
 {
     class Program
     {
-        private const string TOKEN = "YOUR_BOT_TOKEN";
-
         static async Task Main(string[] args)
         {
-            // 1. Инициализация компонентов бота
-            var botClient = new TelegramBotClient(TOKEN);
-            var middlewares = new Middlewares();
+            // Set your bot token here
+            var botToken = "YOUR_BOT_TOKEN";
+            var botClient = new TelegramBotClient(botToken);
+
+            // Create the state manager
             var stateManager = new InMemoryStateManager();
+
+            // Create the router with "main" as the base state
             var router = new Router(stateManager, "main");
+
+            // Register controllers
+            var botController = new BotController();
+            router.ParseStates(botController);
+            router.ParseSelectors(botController);
+            router.ParseActions(botController);
+
+            // Create middleware pipeline
+            var middlewares = new Middlewares()
+                .Add(new LoggingMiddleware())
+                .Add(new RouteMiddleware(router));
+
+            // Create error handler
+            var errorHandler = new CustomErrorHandler();
             
-            // 2. Создание и настройка обработчиков
-            var handlers = new BotHandlers();
+            // Create context builder
+            var contextBuilder = new CustomContextBuilder();
+
+            // Create and start the bot
+            var bot = new Bot(botClient, middlewares, contextBuilder, errorHandler);
             
-            // 3. Парсинг состояний, селекторов и действий
-            router.ParseStates(handlers);
-            router.ParseSelectors(handlers);
-            router.ParseActions(handlers);
-            
-            // 4. Добавление middleware для маршрутизации
-            middlewares.Add(new LoggingMiddleware());
-            middlewares.Add(new RouteMiddleware(router));
-            
-            // 5. Создание и запуск бота
-            var bot = new Bot(
-                botClient,
-                middlewares,
-                new BaseContextBuilder(),
-                new BaseErrorHandler()
-            );
-            
-            Console.WriteLine("Бот запущен! Нажмите Enter для остановки.");
+            Console.WriteLine("Starting bot...");
             bot.Start();
-            
+            Console.WriteLine("Bot is running. Press Enter to exit.");
             Console.ReadLine();
+            
+            // Stop the bot
             bot.Stop();
-            Console.WriteLine("Бот остановлен.");
+            Console.WriteLine("Bot stopped.");
         }
     }
 
-    // Класс для вспомогательного middleware для логирования
+    // Custom error handler
+    public class CustomErrorHandler : IErrorHandler
+    {
+        public Task OnErrorAsync(ITelegramBotClient bot, Exception exception, CancellationToken cancellationToken)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Error occurred: {exception.Message}");
+            Console.WriteLine(exception.StackTrace);
+            Console.ResetColor();
+            return Task.CompletedTask;
+        }
+    }
+
+    // Custom context builder that extracts chat ID
+    public class CustomContextBuilder : BaseContextBuilder
+    {
+        public  BotContext Build(ITelegramBotClient bot, Update update, CancellationToken cancellationToken)
+        {
+            var context = base.Build(bot, update, cancellationToken);
+            
+            // Extract chat ID based on update type
+            if (update.Type == UpdateType.Message && update.Message != null)
+            {
+                context.ChatId = update.Message.Chat.Id;
+            }
+            else if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery?.Message != null)
+            {
+                context.ChatId = update.CallbackQuery.Message.Chat.Id;
+            }
+            
+            return context;
+        }
+    }
+
+    // Custom logging middleware
     public class LoggingMiddleware : IMiddleware
     {
         public async Task InvokeAsync(BotContext context, Func<Task> next)
         {
-            Console.WriteLine($"[{DateTime.Now}] Получено обновление: {context.UpdateType}");
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"[{DateTime.Now}] Received update from Chat ID: {context.ChatId}, Text: {context.Text ?? "N/A"}");
+            Console.ResetColor();
             
-            if (!string.IsNullOrEmpty(context.Text))
-                Console.WriteLine($"Текст: {context.Text}");
-                
+            // Call the next middleware in the pipeline
             await next();
             
-            Console.WriteLine($"[{DateTime.Now}] Обработка завершена");
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"[{DateTime.Now}] Finished processing update");
+            Console.ResetColor();
         }
     }
 
-    // Основной класс обработчиков бота
-    public class BotHandlers
+    // Controller containing all state, selector and action handlers
+    public class BotController
     {
-        #region Состояния
+        // --------------- STATES ---------------
         
         [State("main")]
         public async Task MainState(BotContext context, Actions actions)
         {
-            // Логика состояния main выполняется при первом обращении к боту
-            // Обработка сообщений производится через actions
-            await actions.Handle(context);
+            Console.WriteLine("Handling 'main' state");
+            // Main state's default behavior can be empty - actions will handle specific commands
         }
         
-        [State("profile")]
-        public async Task ProfileState(BotContext context, Actions actions)
+        [State("menu")]
+        public async Task MenuState(BotContext context, Actions actions)
         {
-            // Если текст является командой возврата, переключаемся на основное состояние
-            if (context.Text == "/back")
-            {
-                await context.Bot.SendTextMessageAsync(
-                    context.ChatId,
-                    "Возвращаемся в главное меню",
-                    cancellationToken: context.CancellationToken
-                );
-                
-                await ChangeState(context, "main");
-                return;
-            }
-            
-            // Иначе выполняем обработку текущего состояния
-            await actions.Handle(context);
+            Console.WriteLine("Handling 'menu' state");
+            // Menu state's default behavior can be empty - actions will handle specific commands
         }
         
-        [State("settings", "preferences")] // Один обработчик для двух состояний
-        public async Task SettingsState(BotContext context, Actions actions)
+        [State("order")]
+        public async Task OrderState(BotContext context, Actions actions)
         {
-            if (context.Text == "/back")
-            {
-                await context.Bot.SendTextMessageAsync(
-                    context.ChatId,
-                    "Возвращаемся в главное меню",
-                    cancellationToken: context.CancellationToken
-                );
-                
-                await ChangeState(context, "main");
-                return;
-            }
-            
-            await actions.Handle(context);
+            Console.WriteLine("Handling 'order' state");
+            // Order state's default behavior can be empty - actions will handle specific commands
         }
-        
-        #endregion
-        
-        #region Селекторы
+
+        // --------------- SELECTORS ---------------
         
         [Selector("CommandSelector")]
-        private bool IsCommand(BotContext context)
+        public bool IsCommand(BotContext context)
         {
-            return !string.IsNullOrEmpty(context.Text) && context.Text.StartsWith("/");
-        }
-        
-        [Selector("TextSelector")]
-        private bool IsText(BotContext context)
-        {
-            return context.UpdateType == UpdateType.Message && 
-                   !string.IsNullOrEmpty(context.Text) && 
-                   !context.Text.StartsWith("/");
+            // Check if message starts with '/'
+            return context.Text?.StartsWith("/") == true;
         }
         
         [Selector("CallbackSelector")]
-        private bool IsCallback(BotContext context)
+        public bool IsCallback(BotContext context)
         {
+            // Check if update is a callback query
             return context.UpdateType == UpdateType.CallbackQuery;
         }
         
-        #endregion
+        [Selector("TextSelector")]
+        public bool HasText(BotContext context)
+        {
+            // Check if message has any text
+            return !string.IsNullOrEmpty(context.Text);
+        }
+
+        // --------------- ACTIONS ---------------
         
-        #region Действия для основного состояния
-        
-        [Action("StartCommand", new[] { "CommandSelector" }, new[] { "main" }, 0, false)]
-        private async Task HandleStart(BotContext context)
+        // /start command - works in any state
+        [Action(
+            action: "start",
+            selector: new[] { "CommandSelector" },
+            states: new[] { "main", "menu", "order" },
+            order: 0)]
+        public async Task Start(BotContext context)
         {
             if (context.Text == "/start")
             {
-                var keyboard = new InlineKeyboardMarkup(new[]
+                var keyboard = new ReplyKeyboardMarkup(new[]
                 {
+                    new[] { new KeyboardButton("📋 Menu") ,  new KeyboardButton("🛒 Order") },
+                    new[] {  new KeyboardButton("ℹ️ About"),  new KeyboardButton("🆘 Help")}
+                })
+                {
+                    ResizeKeyboard = true
+                };
+
+                await context.Bot.SendMessage(
+                    chatId: context.ChatId,
+                    text: "👋 Welcome to the Sample Bot!\nUse the keyboard below to navigate.",
+                    replyMarkup: keyboard,
+                    cancellationToken: context.CancellationToken);
+                
+                // Set the state to main
+                await SetState(context, "main");
+            }
+        }
+        
+        // /menu command or "📋 Menu" button - works in any state
+        [Action(
+            action: "menu",
+            selector: new[] { "CommandSelector", "TextSelector" },
+            states: new[] { "main", "menu", "order" },
+            order: 1)]
+        public async Task ShowMenu(BotContext context)
+        {
+            if (context.Text == "/menu" || context.Text == "📋 Menu")
+            {
+                var inlineKeyboard = new InlineKeyboardMarkup(new[]
+                {
+                    new[] 
+                    { 
+                        InlineKeyboardButton.WithCallbackData("🍕 Pizza", "menu_pizza"),
+                        InlineKeyboardButton.WithCallbackData("🍔 Burger", "menu_burger")
+                    },
+                    new[] 
+                    { 
+                        InlineKeyboardButton.WithCallbackData("🍣 Sushi", "menu_sushi"),
+                        InlineKeyboardButton.WithCallbackData("🍝 Pasta", "menu_pasta")
+                    },
                     new[]
                     {
-                        InlineKeyboardButton.WithCallbackData("Профиль", "profile"),
-                        InlineKeyboardButton.WithCallbackData("Настройки", "settings")
+                        InlineKeyboardButton.WithCallbackData("🔙 Back to Main", "back_main")
                     }
                 });
+
+                await context.Bot.SendMessage(
+                    chatId: context.ChatId,
+                    text: "📋 *Menu*\nSelect a category to view items:",
+                    parseMode: ParseMode.Markdown,
+                    replyMarkup: inlineKeyboard,
+                    cancellationToken: context.CancellationToken);
                 
-                await context.Bot.SendTextMessageAsync(
-                    context.ChatId,
-                    "Добро пожаловать! Выберите раздел:",
-                    replyMarkup: keyboard,
-                    cancellationToken: context.CancellationToken
-                );
+                // Set the state to menu
+                await SetState(context, "menu");
             }
         }
         
-        [Action("HelpCommand", new[] { "CommandSelector" }, new[] { "main", "profile", "settings" }, 1, false)]
-        private async Task HandleHelp(BotContext context)
+        // Handles menu item selection
+        [Action(
+            action: "menuItem",
+            selector: new[] { "CallbackSelector" },
+            states: new[] { "menu" },
+            order: 0)]
+        public async Task HandleMenuItem(BotContext context)
         {
-            if (context.Text == "/help")
-            {
-                await context.Bot.SendTextMessageAsync(
-                    context.ChatId,
-                    "Доступные команды:\n" +
-                    "/start - Начать работу с ботом\n" +
-                    "/profile - Перейти в профиль\n" +
-                    "/settings - Открыть настройки\n" +
-                    "/help - Показать справку\n" +
-                    "/back - Вернуться в главное меню",
-                    cancellationToken: context.CancellationToken
-                );
-            }
-        }
-        
-        [Action("ProfileCommand", new[] { "CommandSelector" }, new[] { "main" }, 2, false)]
-        private async Task HandleProfileCommand(BotContext context)
-        {
-            if (context.Text == "/profile")
-            {
-                await context.Bot.SendTextMessageAsync(
-                    context.ChatId,
-                    "Вы перешли в раздел профиля. Используйте /back для возврата.",
-                    cancellationToken: context.CancellationToken
-                );
-                
-                await ChangeState(context, "profile");
-            }
-        }
-        
-        [Action("SettingsCommand", new[] { "CommandSelector" }, new[] { "main" }, 3, false)]
-        private async Task HandleSettingsCommand(BotContext context)
-        {
-            if (context.Text == "/settings")
-            {
-                await context.Bot.SendTextMessageAsync(
-                    context.ChatId,
-                    "Вы перешли в раздел настроек. Используйте /back для возврата.",
-                    cancellationToken: context.CancellationToken
-                );
-                
-                await ChangeState(context, "settings");
-            }
-        }
-        
-        [Action("MainCallback", new[] { "CallbackSelector" }, new[] { "main" }, 4, false)]
-        private async Task HandleMainCallback(BotContext context)
-        {
-            var callbackQuery = context.Update.CallbackQuery;
-            var callbackData = callbackQuery.Data;
+            if (context.Update.CallbackQuery == null) return;
             
+            var callbackData = context.Update.CallbackQuery.Data;
+            
+            // First, answer the callback query to stop the loading indicator
+            await context.Bot.AnswerCallbackQuery(
+                callbackQueryId: context.Update.CallbackQuery.Id,
+                cancellationToken: context.CancellationToken);
+            
+            string itemText = "Unknown menu item";
+            string itemDescription = "No description available";
+            string itemPrice = "0.00";
+            
+            // Handle different menu selections
             switch (callbackData)
             {
-                case "profile":
-                    await context.Bot.SendTextMessageAsync(
-                        context.ChatId,
-                        "Вы перешли в раздел профиля через меню. Используйте /back для возврата.",
-                        cancellationToken: context.CancellationToken
-                    );
-                    
-                    await ChangeState(context, "profile");
+                case "menu_pizza":
+                    itemText = "🍕 Pizza";
+                    itemDescription = "Authentic Italian pizza with various toppings";
+                    itemPrice = "12.99";
                     break;
-                    
-                case "settings":
-                    await context.Bot.SendTextMessageAsync(
-                        context.ChatId,
-                        "Вы перешли в раздел настроек через меню. Используйте /back для возврата.",
-                        cancellationToken: context.CancellationToken
-                    );
-                    
-                    await ChangeState(context, "settings");
+                case "menu_burger":
+                    itemText = "🍔 Burger";
+                    itemDescription = "Juicy beef burger with cheese and fresh vegetables";
+                    itemPrice = "9.99";
                     break;
+                case "menu_sushi":
+                    itemText = "🍣 Sushi";
+                    itemDescription = "Fresh sushi rolls with salmon, tuna, and avocado";
+                    itemPrice = "15.99";
+                    break;
+                case "menu_pasta":
+                    itemText = "🍝 Pasta";
+                    itemDescription = "Homemade pasta with rich sauce and parmesan";
+                    itemPrice = "11.99";
+                    break;
+                case "back_main":
+                    // Return to main menu
+                    await context.Bot.SendMessage(
+                        chatId: context.ChatId,
+                        text: "Returning to main menu...",
+                        cancellationToken: context.CancellationToken);
+                    
+                    await SetState(context, "main");
+                    return;
             }
             
-            // Подтверждаем обработку CallbackQuery
-            await context.Bot.AnswerCallbackQueryAsync(
-                callbackQuery.Id,
-                cancellationToken: context.CancellationToken
-            );
+            // Show item details with order button
+            var orderKeyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[]
+                {
+                    InlineKeyboardButton.WithCallbackData("🛒 Add to Order", $"order_{callbackData.Substring(5)}")
+                },
+                new[]
+                {
+                    InlineKeyboardButton.WithCallbackData("🔙 Back to Menu", "back_menu")
+                }
+            });
+            
+            await context.Bot.SendMessage(
+                chatId: context.ChatId,
+                text: $"*{itemText}*\n\n{itemDescription}\n\nPrice: ${itemPrice}",
+                parseMode: ParseMode.Markdown,
+                replyMarkup: orderKeyboard,
+                cancellationToken: context.CancellationToken);
         }
         
-        [Action("DefaultTextInMain", new[] { "TextSelector" }, new[] { "main" }, 5, false)]
-        private async Task HandleDefaultTextInMain(BotContext context)
+        // Handle "🛒 Order" button or /order command
+        [Action(
+            action: "order",
+            selector: new[] { "CommandSelector", "TextSelector" },
+            states: new[] { "main", "menu", "order" },
+            order: 1)]
+        public async Task ShowOrder(BotContext context)
         {
-            await context.Bot.SendTextMessageAsync(
-                context.ChatId,
-                $"Вы отправили: {context.Text}\nИспользуйте /help для списка команд.",
-                cancellationToken: context.CancellationToken
-            );
+            if (context.Text == "/order" || context.Text == "🛒 Order")
+            {
+                var keyboard = new InlineKeyboardMarkup(new[]
+                {
+                    new[] 
+                    { 
+                        InlineKeyboardButton.WithCallbackData("🧹 Clear Order", "clear_order") 
+                    },
+                    new[] 
+                    { 
+                        InlineKeyboardButton.WithCallbackData("💰 Checkout", "checkout")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("🔙 Back to Main", "back_main")
+                    }
+                });
+
+                await context.Bot.SendMessage(
+                    chatId: context.ChatId,
+                    text: "🛒 *Your Order*\n\nYour order is currently empty. Browse the menu to add items.",
+                    parseMode: ParseMode.Markdown,
+                    replyMarkup: keyboard,
+                    cancellationToken: context.CancellationToken);
+                
+                // Set the state to order
+                await SetState(context, "order");
+            }
         }
         
-        #endregion
-        
-        #region Действия для состояния профиля
-        
-        [Action("ProfileTextMessage", new[] { "TextSelector" }, new[] { "profile" }, 0, false)]
-        private async Task HandleProfileText(BotContext context)
+        // Handle "ℹ️ About" button or /about command
+        [Action(
+            action: "about",
+            selector: new[] { "CommandSelector", "TextSelector" },
+            states: new[] { "main", "menu", "order" },
+            order: 2)]
+        public async Task ShowAbout(BotContext context)
         {
-            await context.Bot.SendTextMessageAsync(
-                context.ChatId,
-                $"Сообщение в профиле: {context.Text}",
-                cancellationToken: context.CancellationToken
-            );
+            if (context.Text == "/about" || context.Text == "ℹ️ About")
+            {
+                await context.Bot.SendMessage(
+                    chatId: context.ChatId,
+                    text: "ℹ️ *About This Bot*\n\nThis is a sample bot built using TBLib - a C# library for Telegram bots. It demonstrates states, actions, selectors, and middleware functionality.",
+                    parseMode: ParseMode.Markdown,
+                    cancellationToken: context.CancellationToken);
+            }
         }
         
-        #endregion
-        
-        #region Действия для состояния настроек
-        
-        [Action("SettingsTextMessage", new[] { "TextSelector" }, new[] { "settings", "preferences" }, 0, true)]
-        private async Task HandleSettingsText(BotContext context)
+        // Handle "🆘 Help" button or /help command
+        [Action(
+            action: "help",
+            selector: new[] { "CommandSelector", "TextSelector" },
+            states: new[] { "main", "menu", "order" },
+            order: 2)]
+        public async Task ShowHelp(BotContext context)
         {
-            await context.Bot.SendTextMessageAsync(
-                context.ChatId,
-                $"Настройка: {context.Text}",
-                cancellationToken: context.CancellationToken
-            );
+            if (context.Text == "/help" || context.Text == "🆘 Help")
+            {
+                await context.Bot.SendMessage(
+                    chatId: context.ChatId,
+                    text: "🆘 *Available Commands*\n\n" +
+                          "/start - Start or restart the bot\n" +
+                          "/menu - Browse our menu\n" +
+                          "/order - View your current order\n" +
+                          "/about - Learn about this bot\n" +
+                          "/help - Show this help message",
+                    parseMode: ParseMode.Markdown,
+                    cancellationToken: context.CancellationToken);
+            }
         }
         
-        // Действие, которое выполнится после предыдущего, т.к. activateWithoutInterruption = true
-        [Action("SettingsHelp", new[] { "TextSelector" }, new[] { "settings", "preferences" }, 1, false)]
-        private async Task HandleSettingsHelp(BotContext context)
+        // Handle "back_menu" callback - return to menu
+        [Action(
+            action: "backToMenu",
+            selector: new[] { "CallbackSelector" },
+            states: new[] { "menu" },
+            order: 1)]
+        public async Task BackToMenu(BotContext context)
         {
-            await context.Bot.SendTextMessageAsync(
-                context.ChatId,
-                "Подсказка: в настройках вы можете указать свои предпочтения.",
-                cancellationToken: context.CancellationToken
-            );
+            if (context.Update.CallbackQuery?.Data == "back_menu")
+            {
+                // Answer the callback query
+                await context.Bot.AnswerCallbackQuery(
+                    callbackQueryId: context.Update.CallbackQuery.Id,
+                    cancellationToken: context.CancellationToken);
+                
+                // Redirect to the menu action
+                context.Text = "/menu";
+                await ShowMenu(context);
+            }
         }
         
-        #endregion
-        
-        // Вспомогательный метод для изменения состояния
-        private async Task ChangeState(BotContext context, string newState)
+        // Handle unknown commands or text - works in any state as a fallback
+        [Action(
+            action: "unknown",
+            selector: new[] { "TextSelector" },
+            states: new[] { "main", "menu", "order" },
+            order: 999)] // High order number to run last
+        public async Task HandleUnknown(BotContext context)
         {
-            var stateManager = new InMemoryStateManager();
-            await stateManager.SetStateAsync(context.ChatId, newState);
+            // Skip if it was a command or handled by another action
+            if (context.Text?.StartsWith("/") == true ||
+                context.Text == "📋 Menu" ||
+                context.Text == "🛒 Order" ||
+                context.Text == "ℹ️ About" ||
+                context.Text == "🆘 Help")
+                return;
+
+            await context.Bot.SendMessage(
+                chatId: context.ChatId,
+                text: "I don't understand that command. Use /help to see available commands.",
+                cancellationToken: context.CancellationToken);
+        }
+        
+        // Helper method to set the user's state
+        private async Task SetState(BotContext context, string state)
+        {
+            var stateManager = TelegramBotClientExtensions.Container.GetService(typeof(IStateManager)) as IStateManager;
+            if (stateManager != null)
+            {
+                await stateManager.SetStateAsync(context.ChatId, state);
+            }
+        }
+    }
+    
+    // Extension to simulate dependency injection container
+    // Note: This is for demonstration purposes only
+    public static class TelegramBotClientExtensions
+    {
+        public static DependencyContainer Container { get; set; } = new DependencyContainer();
+        
+        public class DependencyContainer
+        {
+            private Dictionary<Type, object> _services = new Dictionary<Type, object>();
+            
+            public void Register<T>(T service)
+            {
+                _services[typeof(T)] = service;
+            }
+            
+            public object GetService(Type type)
+            {
+                if (_services.TryGetValue(type, out var service))
+                {
+                    return service;
+                }
+                return null;
+            }
         }
     }
 }

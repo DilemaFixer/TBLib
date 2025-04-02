@@ -26,7 +26,7 @@ public class Actions
 
         foreach (var action in orderedActions)
         {
-            if (action.IsTarget(context))
+            if (await action.IsTarget(context))
             {
                 await action.ExecuteAsync(context);
 

@@ -20,7 +20,7 @@ public class Selector
         _target = target;
     }
 
-    public bool IsTarget(BotContext context)
+    public async Task<bool>IsTarget(BotContext context)
     {
         var parameters = new object[] { context };
         var result = _selector.Invoke(_target, parameters);
@@ -28,7 +28,7 @@ public class Selector
         if (result is bool boolResult)
             return boolResult;
         else if (result is Task<bool> taskBoolResult)
-            return taskBoolResult.GetAwaiter().GetResult();
+            return await taskBoolResult;
 
         return false;
     }

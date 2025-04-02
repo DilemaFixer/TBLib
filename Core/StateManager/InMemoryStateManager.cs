@@ -6,6 +6,9 @@ public class InMemoryStateManager : IStateManager
     
     public Task<string> GetStateAsync(long chatId)
     {
+        if (!_dictionary.ContainsKey(chatId))
+            return Task.FromResult<string>(States.States.BASE_STATE);
+        
         return Task.FromResult(_dictionary[chatId]);
     }
 

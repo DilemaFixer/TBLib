@@ -12,14 +12,14 @@ public class Action
     public uint Order { get; private set; }
     public bool ActivateWithoutInterruption { get; private set; }
 
-    public Action(MethodInfo method, object obj, string? name , uint order ,
+    public Action(MethodInfo method, object obj, string? name, uint order,
         bool activateWithoutInterruption)
     {
         ArgumentNullException.ThrowIfNull(method);
         ArgumentNullException.ThrowIfNull(obj);
-        if(string.IsNullOrEmpty(name))
+        if (string.IsNullOrEmpty(name))
             throw new ArgumentException("Name cannot be null or empty");
-        
+
         _method = method;
         _obj = obj;
         Name = name;
@@ -28,12 +28,18 @@ public class Action
         _selectors = new List<Selector>();
     }
 
-    public bool IsTarget(BotContext context)
+    public async Task<bool> IsTarget(BotContext context)
     {
         if (_selectors.Count == 0)
             throw new InvalidOperationException("No selectors have been registered");
 
-        return _selectors.Any(s => s.IsTarget(context));
+        foreach (Selector selector in _selectors)
+        {
+            if (await selector.IsTarget(context))
+                return true;
+        }
+
+        return false;
     }
 
     public async Task ExecuteAsync(BotContext context)
@@ -47,7 +53,7 @@ public class Action
         else if (result is ValueTask valueTask)
             await valueTask;
     }
-    
+
     public void AddSelector(Selector selector) => _selectors.Add(selector);
     public void RemoveSelector(Selector selector) => _selectors.Remove(selector);
 }

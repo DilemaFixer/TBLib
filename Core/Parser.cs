@@ -30,8 +30,7 @@ public static class Parser
 
             foreach (var selectorName in attribute.Selector)
             {
-                var selector = selectors.FirstOrDefault(s => s.GetType().Name == selectorName);
-
+                var selector = selectors.FirstOrDefault(s => s.SelectorName == selectorName);
                 if (selector == null)
                     throw new InvalidOperationException(
                         $"Selector '{selectorName}' not found in the provided selectors list");
