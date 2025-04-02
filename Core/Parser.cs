@@ -26,7 +26,7 @@ public static class Parser
             if(args[0].ParameterType != typeof(BotContext))
                 throw new Exception($"Method {method.Name} must have exactly one parameter type {typeof(BotContext)}");
             
-            var action = new Action(method, obj, attribute.Action);
+            var action = new Action(method, obj, attribute.Action , attribute.Priority , attribute.ActivateWithoutInterruption);
 
             foreach (var selectorName in attribute.Selector)
             {

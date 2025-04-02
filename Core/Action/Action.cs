@@ -9,11 +9,11 @@ public class Action
     private List<Selector> _selectors;
     private object _obj;
     public string Name { get; private set; }
-    public int Order { get; private set; }
+    public uint Order { get; private set; }
     public bool ActivateWithoutInterruption { get; private set; }
 
-    public Action(MethodInfo method, object obj, string? name , int order = 0,
-        bool activateWithoutInterruption = false)
+    public Action(MethodInfo method, object obj, string? name , uint order ,
+        bool activateWithoutInterruption)
     {
         ArgumentNullException.ThrowIfNull(method);
         ArgumentNullException.ThrowIfNull(obj);

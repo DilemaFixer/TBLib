@@ -5,8 +5,11 @@ public class ActionAttribute : Attribute
     public string Action { get; set; }
     public string[] Selector  { get; set; }
     public string[] States { get; set; }
+    public bool ActivateWithoutInterruption { get; set; }
+    
+    public uint Priority { get; set; }
 
-    public ActionAttribute(string action, string[] selector , params string[] states)
+    public ActionAttribute(string action, string[] selector , string[] states , uint order = 0 , bool activateWithoutInterruption = false)
     {
         if(string.IsNullOrWhiteSpace(action))
             throw new ArgumentException("Action or state is empty");
@@ -25,5 +28,7 @@ public class ActionAttribute : Attribute
         
         Action = action;
         States = states;
+        ActivateWithoutInterruption = activateWithoutInterruption;
+        Priority = order;
     }
 }
