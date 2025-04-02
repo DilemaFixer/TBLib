@@ -35,11 +35,11 @@ public class Action
 
         foreach (Selector selector in _selectors)
         {
-            if (await selector.IsTarget(context))
-                return true;
+            if (!await selector.IsTarget(context))
+                return false;
         }
 
-        return false;
+        return true;
     }
 
     public async Task ExecuteAsync(BotContext context)
