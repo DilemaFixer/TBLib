@@ -6,7 +6,7 @@ public class ActionAttribute : Attribute
     public string[] Selector  { get; set; }
     public string[] States { get; set; }
 
-    public ActionAttribute(string action, string[] states , params string[] selector)
+    public ActionAttribute(string action, string[] selector , params string[] states)
     {
         if(string.IsNullOrWhiteSpace(action))
             throw new ArgumentException("Action or state is empty");

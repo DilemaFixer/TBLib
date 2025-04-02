@@ -4,7 +4,7 @@ public class StateAttribute : Attribute
 {
     public string[] States { get; set; }
 
-    public StateAttribute(string[] states)
+    public StateAttribute(params string[] states)
     {
         ArgumentNullException.ThrowIfNull(states);
         
