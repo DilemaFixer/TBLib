@@ -88,4 +88,24 @@ public class Router
         ArgumentNullException.ThrowIfNull(obj);
         Parser.ParseActionFromType(obj , _selectors , _states);
     }
+
+    public async Task RedirectTo(string state, string action, BotContext context)
+    {
+        if(string.IsNullOrEmpty(state) || string.IsNullOrEmpty(action))
+            throw new ArgumentNullException(nameof(state));
+        
+        ArgumentNullException.ThrowIfNull(context);
+        
+        if(!_states.Contains(state))
+            throw new ArgumentException($"State {state} does not exist.");
+        
+        State stateModel = _states[state];
+
+        Action? actionModel = stateModel.FindAction(action);
+        
+        if(actionModel == null)
+            throw new ArgumentException($"Action {action} does not exist.");
+        
+        await actionModel.ExecuteAsync(context);
+    }
 }

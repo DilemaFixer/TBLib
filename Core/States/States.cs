@@ -53,7 +53,7 @@ public class States
         
         await _states[state].Handle(context);
     }
-
+    
     public void ParseStates<T>(T obj) where T : class => 
         Parser.ParserStateFromType(obj , _states);
 }
