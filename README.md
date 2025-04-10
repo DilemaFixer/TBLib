@@ -155,6 +155,7 @@ public class MyActionController
 
 - The `selector` parameter can contain multiple selector names, meaning the action will be triggered if ANY of the selectors return true.
 - The `states` parameter can contain multiple state names, meaning the action will be registered with all the specified states.
+- The `activateWithoutInterruption` parameter tells whether to stop searching for other Actions whose selectors will respond to the current update (this can be useful in a logging situation, we can set it to true and even if an Action is activated, Router will continue to search for Actions that will react)
 
 ### Selectors
 
